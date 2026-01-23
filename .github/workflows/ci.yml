@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+      
+      - name: Run ruff format check
+        run: ruff format --check .
+      
+      - name: Run ruff lint
+        run: ruff check .
+
+  type-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install mypy
+      
+      - name: Run mypy
+        run: mypy app
+        continue-on-error: true  # Optional for now, remove when strict
+
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: orcazap
+          POSTGRES_PASSWORD: testpassword
+          POSTGRES_DB: orcazap_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Install test dependencies
+        run: |
+          pip install pytest-cov
+      
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://orcazap:testpassword@localhost:5432/orcazap_test
+          REDIS_URL: redis://localhost:6379/0
+          SECRET_KEY: test-secret-key-for-ci
+          WHATSAPP_VERIFY_TOKEN: test-verify-token
+        run: |
+          pytest --cov=app --cov-report=term-missing
+      
+      - name: Check test requirements
+        run: |
+          pytest --co -q | grep -q "test_" || (echo "No tests found!" && exit 1)
+          pytest --collect-only | grep -E "(skipped|deselected)" && echo "WARNING: Some tests skipped" || true
+
+  infra-validation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.5.0"
+      
+      - name: Install shellcheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+      
+      - name: Install shfmt
+        run: |
+          wget -O shfmt https://github.com/mvdan/sh/releases/download/v3.7.0/shfmt_v3.7.0_linux_amd64
+          chmod +x shfmt
+          sudo mv shfmt /usr/local/bin/
+      
+      - name: Terraform fmt check
+        working-directory: infra/terraform
+        run: terraform fmt -check -recursive
+      
+      - name: Terraform validate
+        working-directory: infra/terraform
+        run: terraform init -backend=false && terraform validate
+      
+      - name: Shellcheck all bash scripts
+        run: |
+          find infra/scripts -name "*.sh" -type f | while read -r script; do
+            echo "Checking $script"
+            shellcheck "$script" || exit 1
+          done
+      
+      - name: shfmt check
+        run: |
+          find infra/scripts -name "*.sh" -type f | while read -r script; do
+            echo "Checking $script"
+            shfmt -d "$script" || exit 1
+          done
+      
+      - name: Dry-run bootstrap scripts (syntax check)
+        run: |
+          # Test that scripts can be sourced and parse arguments
+          export DRY_RUN=true
+          export INVENTORY_FILE=infra/inventory/hosts.example.env
+          
+          # Test library scripts can be sourced
+          bash -n infra/scripts/lib/common.sh
+          bash -n infra/scripts/lib/ssh.sh
+          bash -n infra/scripts/lib/assert.sh
+          
+          # Test cleanup scripts can parse --dry-run
+          bash -n infra/scripts/cleanup/cleanup_all.sh
+          bash -n infra/scripts/cleanup/cleanup_app.sh
+          bash -n infra/scripts/cleanup/cleanup_worker.sh
+          bash -n infra/scripts/cleanup/cleanup_data.sh
+          
+          # Test ops scripts syntax
+          bash -n infra/scripts/ops/remove_basecommerce.sh
+          bash -n infra/scripts/ops/remove_docker.sh
+          bash -n infra/scripts/ops/verify_clean_host.sh
+          
+          echo "All scripts passed syntax check"
+

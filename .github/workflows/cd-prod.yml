@@ -1,0 +1,128 @@
+name: CD - Production Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy'
+        required: true
+        default: 'main'
+      clean:
+        description: 'Clean before deploying'
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://${{ secrets.PROD_DOMAIN || 'orcazap.example.com' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+      
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+      
+      - name: Setup deployment environment
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.PROD_VPS1_HOST }} >> ~/.ssh/known_hosts || true
+          ssh-keyscan -H ${{ secrets.PROD_VPS3_HOST }} >> ~/.ssh/known_hosts || true
+          chmod 600 ~/.ssh/known_hosts
+      
+      - name: Clone repository on VPS1 (if needed)
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_SSH_USER || 'root' }}@${{ secrets.PROD_VPS1_HOST }} << 'EOF'
+            if [ ! -d /opt/orcazap/.git ]; then
+              mkdir -p /opt/orcazap
+              git clone ${{ github.event.repository.clone_url }} /opt/orcazap || true
+            fi
+          EOF
+      
+      - name: Clone repository on VPS3 (if needed)
+        run: |
+          ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_SSH_USER || 'root' }}@${{ secrets.PROD_VPS3_HOST }} << 'EOF'
+            if [ ! -d /opt/orcazap/.git ]; then
+              mkdir -p /opt/orcazap
+              git clone ${{ github.event.repository.clone_url }} /opt/orcazap || true
+            fi
+          EOF
+      
+      - name: Deploy application to VPS1
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          INVENTORY_FILE: ${{ secrets.PROD_INVENTORY_FILE || 'infra/inventory/hosts.env' }}
+          REPO_URL: ${{ github.event.repository.clone_url }}
+        run: |
+          cd infra/scripts/deploy
+          ./deploy_app.sh \
+            --host ${{ secrets.PROD_VPS1_HOST }} \
+            --branch ${{ github.event.inputs.branch || 'main' }} \
+            ${{ github.event.inputs.clean && '--clean' || '--no-clean' }}
+      
+      - name: Deploy worker to VPS3
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          INVENTORY_FILE: ${{ secrets.PROD_INVENTORY_FILE || 'infra/inventory/hosts.env' }}
+          REPO_URL: ${{ github.event.repository.clone_url }}
+        run: |
+          cd infra/scripts/deploy
+          ./deploy_worker.sh \
+            --host ${{ secrets.PROD_VPS3_HOST }} \
+            --branch ${{ github.event.inputs.branch || 'main' }} \
+            ${{ github.event.inputs.clean && '--clean' || '--no-clean' }}
+      
+      - name: Run database migrations
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          INVENTORY_FILE: ${{ secrets.PROD_INVENTORY_FILE || 'infra/inventory/hosts.env' }}
+        run: |
+          cd infra/scripts/deploy
+          ./migrate.sh --host ${{ secrets.PROD_VPS1_HOST }}
+      
+      - name: Health check
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          INVENTORY_FILE: ${{ secrets.PROD_INVENTORY_FILE || 'infra/inventory/hosts.env' }}
+        run: |
+          cd infra/scripts/deploy
+          ./healthcheck.sh --host ${{ secrets.PROD_VPS1_HOST }} || {
+            echo "Health check failed. Printing service status and logs:"
+            ssh -o StrictHostKeyChecking=no ${{ secrets.PROD_SSH_USER || 'root' }}@${{ secrets.PROD_VPS1_HOST }} << 'EOF'
+              systemctl status orcazap-app || true
+              journalctl -u orcazap-app -n 100 --no-pager || true
+            EOF
+            exit 1
+          }
+      
+      - name: Print deployment summary
+        if: success()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.event.inputs.branch || github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **VPS1 (APP)**: ${{ secrets.PROD_VPS1_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **VPS3 (WORKER)**: ${{ secrets.PROD_VPS3_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Print deployment failure details
+        if: failure()
+        run: |
+          echo "## Deployment Failed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: ${{ github.event.inputs.branch || github.ref }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **VPS1 (APP)**: ${{ secrets.PROD_VPS1_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **VPS3 (WORKER)**: ${{ secrets.PROD_VPS3_HOST }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ❌ Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for details." >> $GITHUB_STEP_SUMMARY
+

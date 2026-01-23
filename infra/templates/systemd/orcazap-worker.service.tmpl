@@ -1,0 +1,26 @@
+[Unit]
+Description=OrcaZap RQ Worker %i
+After=network.target redis.service
+
+[Service]
+Type=simple
+User=${APP_USER}
+Group=${APP_USER}
+WorkingDirectory=${APP_DIR}
+Environment="PATH=${APP_DIR}/venv/bin"
+EnvironmentFile=${APP_ENV_FILE}
+ExecStart=${APP_DIR}/venv/bin/rq worker --url ${REDIS_URL} default
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=orcazap-worker-%i
+
+# Security
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+
+
