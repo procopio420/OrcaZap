@@ -69,13 +69,13 @@ def upgrade() -> None:
         op.execute("CREATE TYPE approvalstatus AS ENUM ('pending', 'approved', 'rejected')")
     
     # Tenants
-        op.create_table(
-            "tenants",
-            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-            sa.Column("name", sa.String(255), nullable=False),
-            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        )
+    op.create_table(
+        "tenants",
+        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column("name", sa.String(255), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+    )
 
     # Users
     op.create_table(
