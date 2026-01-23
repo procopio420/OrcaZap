@@ -19,25 +19,63 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Create enum types
-    op.execute("CREATE TYPE userrole AS ENUM ('owner', 'attendant')")
-    op.execute(
-        "CREATE TYPE conversationstate AS ENUM "
-        "('INBOUND', 'CAPTURE_MIN', 'QUOTE_READY', 'QUOTE_SENT', "
-        "'WAITING_REPLY', 'HUMAN_APPROVAL', 'WON', 'LOST')"
-    )
-    op.execute("CREATE TYPE messagedirection AS ENUM ('inbound', 'outbound')")
-    op.execute("CREATE TYPE quotestatus AS ENUM ('draft', 'sent', 'expired', 'won', 'lost')")
-    op.execute("CREATE TYPE approvalstatus AS ENUM ('pending', 'approved', 'rejected')")
-
+    # Check if migration already applied (tenants table exists)
+    connection = op.get_bind()
+    result = connection.execute(sa.text(
+        "SELECT 1 FROM information_schema.tables WHERE table_name = 'tenants'"
+    )).fetchone()
+    if result:
+        # Migration already applied, skip
+        return
+    
+    # Create enum types (idempotent - check if exists first)
+    # Check and create userrole enum
+    result = connection.execute(sa.text(
+        "SELECT 1 FROM pg_type WHERE typname = 'userrole'"
+    )).fetchone()
+    if not result:
+        op.execute("CREATE TYPE userrole AS ENUM ('owner', 'attendant')")
+    
+    # Check and create conversationstate enum
+    result = connection.execute(sa.text(
+        "SELECT 1 FROM pg_type WHERE typname = 'conversationstate'"
+    )).fetchone()
+    if not result:
+        op.execute(
+            "CREATE TYPE conversationstate AS ENUM "
+            "('INBOUND', 'CAPTURE_MIN', 'QUOTE_READY', 'QUOTE_SENT', "
+            "'WAITING_REPLY', 'HUMAN_APPROVAL', 'WON', 'LOST')"
+        )
+    
+    # Check and create messagedirection enum
+    result = connection.execute(sa.text(
+        "SELECT 1 FROM pg_type WHERE typname = 'messagedirection'"
+    )).fetchone()
+    if not result:
+        op.execute("CREATE TYPE messagedirection AS ENUM ('inbound', 'outbound')")
+    
+    # Check and create quotestatus enum
+    result = connection.execute(sa.text(
+        "SELECT 1 FROM pg_type WHERE typname = 'quotestatus'"
+    )).fetchone()
+    if not result:
+        op.execute("CREATE TYPE quotestatus AS ENUM ('draft', 'sent', 'expired', 'won', 'lost')")
+    
+    # Check and create approvalstatus enum
+    result = connection.execute(sa.text(
+        "SELECT 1 FROM pg_type WHERE typname = 'approvalstatus'"
+    )).fetchone()
+    if not result:
+        op.execute("CREATE TYPE approvalstatus AS ENUM ('pending', 'approved', 'rejected')")
+    
     # Tenants
-    op.create_table(
-        "tenants",
-        sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("name", sa.String(255), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-        sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
-    )
+        op.create_table(
+            "tenants",
+            sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
+            sa.Column("name", sa.String(255), nullable=False),
+            sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+            sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
+        )
 
     # Users
     op.create_table(
