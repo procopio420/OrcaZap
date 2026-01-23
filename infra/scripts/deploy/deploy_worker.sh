@@ -55,13 +55,21 @@ deploy_code() {
     fi
     
     ssh_exec_sudo "$host" "$user" "$port" "
+        # Ensure directory exists and is owned by app_user
+        mkdir -p $app_dir
+        chown -R $app_user:$app_user $app_dir
+        
         if [ -d $app_dir/.git ]; then
             cd $app_dir
             sudo -u $app_user git fetch origin || exit 1
             sudo -u $app_user git checkout $branch || sudo -u $app_user git checkout -b $branch origin/$branch || exit 1
             sudo -u $app_user git pull origin $branch || exit 1
         elif [ -n '$repo_url' ]; then
-            # Clone if repo URL provided and directory doesn't exist
+            # Clone if repo URL provided
+            if [ -d $app_dir ] && [ -n \"\$(ls -A $app_dir 2>/dev/null)\" ]; then
+                # Directory exists with content, remove it
+                rm -rf $app_dir/*
+            fi
             sudo -u $app_user git clone $repo_url $app_dir || exit 1
             cd $app_dir
             sudo -u $app_user git checkout $branch || exit 1
@@ -69,6 +77,9 @@ deploy_code() {
             echo 'Git repository not found in $app_dir and REPO_URL not set' >&2
             exit 1
         fi
+        
+        # Ensure ownership after git operations
+        chown -R $app_user:$app_user $app_dir
     " || {
         # Rollback on failure
         if [ -n "$git_hash_before" ] && [ "$DRY_RUN" = false ]; then
@@ -117,6 +128,88 @@ install_dependencies() {
             exit 1
         fi
     "
+}
+
+create_env_file() {
+    local host="$1"
+    local user="${2:-root}"
+    local port="${3:-22}"
+    local app_dir="${APP_DIR:-/opt/orcazap}"
+    local app_user="${APP_USER:-orcazap}"
+    local app_env_file="${APP_ENV_FILE:-/opt/orcazap/.env}"
+    local vps2_wg_ip="${VPS2_WIREGUARD_IP:-10.10.0.2}"
+    
+    log_info "Creating .env file"
+    
+    # Generate SECRET_KEY if not set
+    local secret_key="${SECRET_KEY:-}"
+    if [ -z "$secret_key" ]; then
+        secret_key=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || openssl rand -hex 32)
+    fi
+    
+    # Build DATABASE_URL
+    local db_url="postgresql://${POSTGRES_USER:-orcazap}:${POSTGRES_PASSWORD:-}@${vps2_wg_ip}:5432/${POSTGRES_DB:-orcazap}"
+    
+    # Build REDIS_URL (with password if set)
+    local redis_url="redis://"
+    if [ -n "${REDIS_PASSWORD:-}" ]; then
+        redis_url="redis://:${REDIS_PASSWORD}@${vps2_wg_ip}:6379/0"
+    else
+        redis_url="redis://${vps2_wg_ip}:6379/0"
+    fi
+    
+    # Create .env content
+    local env_content="# Database
+DATABASE_URL=$db_url
+
+# Redis
+REDIS_URL=$redis_url
+
+# Application
+SECRET_KEY=$secret_key
+DEBUG=false
+ENVIRONMENT=production
+
+# WhatsApp Cloud API
+WHATSAPP_VERIFY_TOKEN=${WHATSAPP_VERIFY_TOKEN:-change-me-random-string}
+WHATSAPP_ACCESS_TOKEN=${WHATSAPP_ACCESS_TOKEN:-your-access-token-here}
+WHATSAPP_PHONE_NUMBER_ID=${WHATSAPP_PHONE_NUMBER_ID:-your-phone-number-id}
+WHATSAPP_BUSINESS_ACCOUNT_ID=${WHATSAPP_BUSINESS_ACCOUNT_ID:-your-waba-id}
+
+# Security
+BCRYPT_ROUNDS=12
+
+# Admin
+ADMIN_SESSION_SECRET=${ADMIN_SESSION_SECRET:-$secret_key}
+
+# Operator Admin
+OPERATOR_USERNAME=${OPERATOR_USERNAME:-admin}
+OPERATOR_PASSWORD=${OPERATOR_PASSWORD:-change-me-in-production}
+
+# Stripe
+STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-}
+STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-}
+STRIPE_PRICE_ID=${STRIPE_PRICE_ID:-}
+"
+    
+    # Write to temp file
+    local temp_env="/tmp/orcazap.env.$$"
+    echo "$env_content" > "$temp_env"
+    
+    # Copy to remote host
+    ssh_copy_file "$host" "$user" "$port" "$temp_env" "/tmp/orcazap.env"
+    
+    # Move to final location
+    ssh_exec_sudo "$host" "$user" "$port" "
+        mv /tmp/orcazap.env $app_env_file
+        chown $app_user:$app_user $app_env_file
+        chmod 600 $app_env_file
+    "
+    
+    # Clean up
+    rm -f "$temp_env"
+    
+    log_info ".env file created at $app_env_file"
 }
 
 restart_services() {
@@ -212,6 +305,7 @@ main() {
     deploy_code "$TARGET_HOST" "$ssh_user" "$ssh_port"
     setup_venv "$TARGET_HOST" "$ssh_user" "$ssh_port"
     install_dependencies "$TARGET_HOST" "$ssh_user" "$ssh_port"
+    create_env_file "$TARGET_HOST" "$ssh_user" "$ssh_port"
     restart_services "$TARGET_HOST" "$ssh_user" "$ssh_port"
     
     log_success "Worker deployment completed"

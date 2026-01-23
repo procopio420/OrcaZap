@@ -66,22 +66,29 @@ configure_redis() {
             cp /etc/redis/redis.conf /etc/redis/redis.conf.backup.\$(date +%Y%m%d_%H%M%S)
         fi
         
-        # Configure to bind to WireGuard interface
-        sed -i 's|^bind 127.0.0.1|bind $wg_ip 127.0.0.1|g' /etc/redis/redis.conf
-        sed -i 's|^# bind 127.0.0.1|bind $wg_ip 127.0.0.1|g' /etc/redis/redis.conf
+        # Configure to bind to WireGuard interface (use perl for more reliable replacement)
+        perl -i -pe \"s|^bind 127.0.0.1|bind $wg_ip 127.0.0.1|g\" /etc/redis/redis.conf 2>/dev/null || true
+        perl -i -pe \"s|^# bind 127.0.0.1|bind $wg_ip 127.0.0.1|g\" /etc/redis/redis.conf 2>/dev/null || true
+        
+        # If bind line doesn't exist, add it
+        if ! grep -q \"^bind.*$wg_ip\" /etc/redis/redis.conf; then
+            sed -i \"1i bind $wg_ip 127.0.0.1\" /etc/redis/redis.conf
+        fi
         
         # Set password
-        sed -i 's|^# requirepass|requirepass|g' /etc/redis/redis.conf
-        sed -i 's|^requirepass.*|requirepass $redis_password|g' /etc/redis/redis.conf
+        perl -i -pe \"s|^# requirepass|requirepass|g\" /etc/redis/redis.conf 2>/dev/null || true
+        perl -i -pe \"s|^requirepass.*|requirepass $redis_password|g\" /etc/redis/redis.conf 2>/dev/null || true
+        
+        # If requirepass doesn't exist, add it
+        if ! grep -q \"^requirepass\" /etc/redis/redis.conf; then
+            echo \"requirepass $redis_password\" >> /etc/redis/redis.conf
+        fi
         
         # Enable protected mode
-        sed -i 's|^protected-mode yes|protected-mode yes|g' /etc/redis/redis.conf
-        sed -i 's|^protected-mode no|protected-mode yes|g' /etc/redis/redis.conf
-        
-        # Persistence (RDB snapshots)
-        sed -i 's|^save 900 1|save 900 1|g' /etc/redis/redis.conf
-        sed -i 's|^save 300 10|save 300 10|g' /etc/redis/redis.conf
-        sed -i 's|^save 60 10000|save 60 10000|g' /etc/redis/redis.conf
+        perl -i -pe \"s|^protected-mode no|protected-mode yes|g\" /etc/redis/redis.conf 2>/dev/null || true
+        if ! grep -q \"^protected-mode\" /etc/redis/redis.conf; then
+            echo \"protected-mode yes\" >> /etc/redis/redis.conf
+        fi
     "
 }
 
