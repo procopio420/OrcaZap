@@ -23,7 +23,18 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password."""
+    """Hash a password.
+    
+    Raises:
+        HTTPException: If password is too long (bcrypt limit is 72 bytes)
+    """
+    # Bcrypt has a 72-byte limit. Check password length before hashing.
+    # We use UTF-8 encoding to get byte length, but allow some margin for safety.
+    if len(password.encode('utf-8')) > 72:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A senha é muito longa. Por favor, use uma senha com no máximo 72 caracteres.",
+        )
     return pwd_context.hash(password)
 
 
@@ -58,8 +69,17 @@ def register_tenant_and_user(
         Tuple of (Tenant, User)
 
     Raises:
-        HTTPException: If email already exists or slug generation fails
+        HTTPException: If email already exists, password is invalid, or slug generation fails
     """
+    # Validate password length before processing
+    # Bcrypt has a 72-byte limit, so we validate early with a user-friendly message
+    password_bytes = len(password.encode('utf-8'))
+    if password_bytes > 72:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A senha é muito longa. Por favor, use uma senha com no máximo 72 caracteres.",
+        )
+    
     # Generate unique slug
     base_slug = slugify(store_name)
     slug = ensure_unique_slug(db, base_slug)
@@ -83,10 +103,22 @@ def register_tenant_and_user(
     db.flush()  # Get tenant.id
 
     # Create owner user
+    # get_password_hash will also validate, but we've already checked above
+    try:
+        password_hash = get_password_hash(password)
+    except HTTPException:
+        raise  # Re-raise HTTPException as-is
+    except Exception as e:
+        # Catch any other hashing errors and provide user-friendly message
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Erro ao processar a senha: {str(e)}",
+        )
+
     user = User(
         tenant_id=tenant.id,
         email=email,
-        password_hash=get_password_hash(password),
+        password_hash=password_hash,
         role=UserRole.OWNER,
     )
     db.add(user)

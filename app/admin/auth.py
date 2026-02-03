@@ -24,7 +24,17 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password."""
+    """Hash a password.
+    
+    Raises:
+        HTTPException: If password is too long (bcrypt limit is 72 bytes)
+    """
+    # Bcrypt has a 72-byte limit. Check password length before hashing.
+    if len(password.encode('utf-8')) > 72:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="A senha é muito longa. Por favor, use uma senha com no máximo 72 caracteres.",
+        )
     return pwd_context.hash(password)
 
 

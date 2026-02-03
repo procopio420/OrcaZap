@@ -82,8 +82,12 @@ async def register(
             max_age=86400 * 7,  # 7 days
         )
         return response
-    except HTTPException:
-        raise
+    except HTTPException as e:
+        # Display HTTPException errors in the registration form
+        return HTMLResponse(
+            content=render_template("public/register.html", {"error": e.detail}),
+            status_code=e.status_code,
+        )
     except Exception as e:
         return HTMLResponse(
             content=render_template("public/register.html", {"error": str(e)}),
