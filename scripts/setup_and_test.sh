@@ -178,3 +178,6 @@ log_info "  4. Start app: source venv/bin/activate && uvicorn app.main:app --rel
 log_info ""
 
 
+
+
+

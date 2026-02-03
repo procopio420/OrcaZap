@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.adapters.whatsapp.sender import send_text_message
 from app.db.base import SessionLocal
 from app.db.models import (
+    Approval,
     ApprovalStatus,
     Channel,
     Contact,
@@ -24,6 +25,12 @@ from app.domain.messages import format_quote_message, get_data_capture_prompt
 from app.domain.parsing import parse_data_capture_message
 from app.domain.quote import QuoteGenerationError, generate_quote
 from app.domain.state_machine import Event, transition
+from app.middleware.metrics import (
+    record_ai_call,
+    record_approval_created,
+    record_message_processed,
+    record_quote_generated,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +81,23 @@ def process_inbound_event(job_data: dict[str, Any]) -> None:
             )
             return  # Idempotent - already processed
 
+        # Get tenant and check subscription status
+        from app.db.models import Tenant
+        tenant = db.query(Tenant).filter_by(id=tenant_id).first()
+        if not tenant:
+            error_msg = f"Tenant {tenant_id} not found"
+            logger.error(error_msg, extra=log_extra)
+            raise ValueError(error_msg)
+        
+        # Check subscription status - block processing if inactive
+        if not is_subscription_active(tenant):
+            logger.warning(
+                f"Message processing blocked for tenant {tenant_id} - subscription inactive",
+                extra=log_extra,
+            )
+            # Don't process message if subscription is inactive
+            return  # Idempotent - silently skip
+        
         # Get channel
         channel = db.query(Channel).filter_by(id=channel_id, tenant_id=tenant_id).first()
         if not channel:
@@ -193,7 +217,14 @@ def process_inbound_event(job_data: dict[str, Any]) -> None:
         elif conversation.state == ConversationState.CAPTURE_MIN:
             # Parse message to extract data
             message_text = job_data.get("message_text", "")
-            parsed_data = parse_data_capture_message(message_text)
+            # Try AI parsing first (will fallback to regex if AI fails)
+            # For MVP, we can enable AI parsing via feature flag or tenant setting
+            use_ai = job_data.get("use_ai", False)  # Can be enabled per tenant later
+            parsed_data, requires_approval = parse_data_capture_message(
+                message_text,
+                use_ai=use_ai,
+                tenant_id=tenant_id,
+            )
 
             if not parsed_data:
                 # Data not complete, send error message
@@ -318,9 +349,27 @@ def process_inbound_event(job_data: dict[str, Any]) -> None:
                 # If we have unknown SKUs, require approval
                 if unknown_skus and not needs_approval:
                     needs_approval = True
-                    approval_reason = f"Unknown SKUs: {', '.join(unknown_skus)}"
-                    # Create approval record
-                    from app.db.models import Approval, ApprovalStatus
+                
+                # If AI was used, always require approval
+                if requires_approval and not needs_approval:
+                    needs_approval = True
+                
+                # Record quote generation
+                record_quote_generated(str(tenant_id), "generated")
+                
+                # Create approval record if needed
+                if needs_approval:
+                    approval_reason_parts = []
+                    reason_type = "other"
+                    if unknown_skus:
+                        approval_reason_parts.append(f"Unknown SKUs: {', '.join(unknown_skus)}")
+                        reason_type = "unknown_sku"
+                    if requires_approval:
+                        approval_reason_parts.append("IA utilizada para parsing (requer supervisão)")
+                        reason_type = "ai_used"
+                    
+                    approval_reason = "; ".join(approval_reason_parts) or "Aprovação requerida"
+                    
                     approval = Approval(
                         tenant_id=tenant_id,
                         quote_id=quote.id,
@@ -329,6 +378,9 @@ def process_inbound_event(job_data: dict[str, Any]) -> None:
                     )
                     db.add(approval)
                     db.flush()
+                    
+                    # Record approval creation
+                    record_approval_created(str(tenant_id), reason_type)
 
                 if needs_approval:
                     # Transition to HUMAN_APPROVAL state

@@ -1,6 +1,9 @@
 """Onboarding step templates."""
 
-from jinja2 import Template
+from jinja2 import Environment, select_autoescape
+
+# Create safe Jinja2 environment with autoescape enabled
+_jinja_env = Environment(autoescape=select_autoescape(['html', 'xml']))
 
 
 def render_onboarding_step(step: int, context: dict) -> str:
@@ -275,7 +278,9 @@ XYZ789,Tijolo Cerâmico,un,0.85"></textarea>
     }
 
     template_str = templates.get(step, "<p>Step not found</p>")
-    template = Template(template_str)
+    template = _jinja_env.from_string(template_str)
     return template.render(**context)
+
+
 
 

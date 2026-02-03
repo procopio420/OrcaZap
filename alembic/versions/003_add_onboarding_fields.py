@@ -32,3 +32,6 @@ def downgrade() -> None:
     op.drop_column("tenants", "onboarding_step")
 
 
+
+
+

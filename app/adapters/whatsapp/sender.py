@@ -6,6 +6,7 @@ from uuid import UUID
 
 import httpx
 
+from app.core.retry import retry_with_backoff
 from app.db.models import Channel
 from app.settings import settings
 
@@ -61,35 +62,76 @@ def send_text_message(
         "to_phone": to_phone,
     }
 
-    try:
-        with httpx.Client(timeout=10.0) as client:
+    def _send():
+        """Inner function for retry logic."""
+        with httpx.Client(timeout=settings.whatsapp_api_timeout) as client:
             response = client.post(url, json=payload, headers=headers)
-            response.raise_for_status()
-
-            result = response.json()
-            provider_message_id = result.get("messages", [{}])[0].get("id")
-
-            if provider_message_id:
-                log_extra["provider_message_id"] = provider_message_id
-                logger.info(
-                    f"Message sent successfully: {provider_message_id}",
-                    extra=log_extra,
+            # Check for 5xx errors (retry) vs 4xx errors (don't retry)
+            if response.status_code >= 500:
+                # 5xx errors should be retried
+                response.raise_for_status()  # Raise to trigger retry
+            elif response.status_code >= 400:
+                # 4xx errors are client errors, don't retry - raise special exception
+                raise httpx.HTTPStatusError(
+                    f"Client error: {response.status_code}",
+                    request=response.request,
+                    response=response,
                 )
-                return provider_message_id
-            else:
-                logger.warning(
-                    "Message sent but no provider_message_id in response",
-                    extra=log_extra,
-                )
-                return None
-
+            return response.json()
+    
+    # Retry on network errors and 5xx status codes only
+    # Don't retry on 4xx (client errors) - those are permanent
+    try:
+        result = retry_with_backoff(
+            _send,
+            max_retries=3,
+            initial_delay=1.0,
+            max_delay=30.0,
+            retryable_exceptions=(
+                httpx.TimeoutException,
+                httpx.NetworkError,
+            ),
+        )
+        
+        provider_message_id = result.get("messages", [{}])[0].get("id")
+        
+        if provider_message_id:
+            log_extra["provider_message_id"] = provider_message_id
+            logger.info(
+                f"Message sent successfully: {provider_message_id}",
+                extra=log_extra,
+            )
+            return provider_message_id
+        else:
+            logger.warning(
+                "Message sent but no provider_message_id in response",
+                extra=log_extra,
+            )
+            return None
+            
     except httpx.HTTPStatusError as e:
+        # Don't retry on 4xx errors (client errors)
+        if 400 <= e.response.status_code < 500:
+            logger.error(
+                f"Client error sending message: {e.response.status_code} - {e.response.text}",
+                extra=log_extra,
+            )
+            raise
+        # Retry on 5xx errors (server errors) - handled by retry logic
         logger.error(
-            f"HTTP error sending message: {e.response.status_code} - {e.response.text}",
+            f"Server error sending message: {e.response.status_code} - {e.response.text}",
             extra=log_extra,
         )
         raise
+    except (httpx.TimeoutException, httpx.NetworkError) as e:
+        # These are retried by retry_with_backoff, but if all retries fail:
+        logger.error(
+            f"Network error sending message after retries: {e}",
+            extra=log_extra,
+            exc_info=True,
+        )
+        raise
     except Exception as e:
-        logger.error(f"Error sending message: {e}", extra=log_extra, exc_info=True)
+        logger.error(f"Unexpected error sending message: {e}", extra=log_extra, exc_info=True)
         raise
 

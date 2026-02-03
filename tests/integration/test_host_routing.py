@@ -145,3 +145,6 @@ def test_multiple_tenants_isolation(client, db_session):
     assert tenant1.name not in response2.text
 
 
+
+
+

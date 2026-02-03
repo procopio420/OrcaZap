@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from app.adapters.whatsapp.models import WhatsAppWebhookPayload
 from app.db.base import SessionLocal
 from app.db.models import Message, MessageDirection
+from app.middleware.rate_limit import webhook_rate_limit
 from app.settings import settings
 from app.worker.jobs import enqueue_inbound_event
 
@@ -56,6 +57,7 @@ async def verify_webhook(
 
 
 @router.post("")
+@webhook_rate_limit
 async def handle_webhook(
     request: Request,
     payload: WhatsAppWebhookPayload,

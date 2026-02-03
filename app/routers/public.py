@@ -54,8 +54,8 @@ async def register(
     try:
         tenant, user = register_tenant_and_user(db, store_name, email, password)
 
-        # Create session
-        session_id = create_session(user.id, tenant.id)
+        # Create session with CSRF token
+        session_id, csrf_token = create_session(user.id)
 
         # Redirect to onboarding
         response = RedirectResponse(
@@ -68,6 +68,16 @@ async def register(
             domain=".orcazap.com",  # Cross-subdomain
             secure=True,  # HTTPS only
             httponly=True,
+            samesite="lax",
+            max_age=86400 * 7,  # 7 days
+        )
+        # Set CSRF token cookie
+        response.set_cookie(
+            key="csrf_token",
+            value=csrf_token,
+            domain=".orcazap.com",
+            httponly=False,  # Needs to be accessible to JavaScript for HTMX
+            secure=True,
             samesite="lax",
             max_age=86400 * 7,  # 7 days
         )
@@ -134,8 +144,8 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
-    # Create session
-    session_id = create_session(authenticated_user.id, authenticated_user.tenant_id)
+    # Create session with CSRF token
+    session_id, csrf_token = create_session(authenticated_user.id)
 
     # Get tenant for redirect
     tenant_obj = db.query(Tenant).filter_by(id=authenticated_user.tenant_id).first()
@@ -157,6 +167,16 @@ async def login(
         domain=".orcazap.com",  # Cross-subdomain
         secure=True,  # HTTPS only
         httponly=True,
+        samesite="lax",
+        max_age=86400 * 7,  # 7 days
+    )
+    # Set CSRF token cookie
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        domain=".orcazap.com",
+        httponly=False,  # Needs to be accessible to JavaScript for HTMX
+        secure=True,
         samesite="lax",
         max_age=86400 * 7,  # 7 days
     )

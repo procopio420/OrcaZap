@@ -37,6 +37,11 @@ ENV/
 .env
 .env.local
 
+# Infrastructure secrets (NEVER commit)
+infra/inventory/hosts.env
+infra/deploy_key
+infra/deploy_key.pub
+
 # Database
 *.db
 *.sqlite

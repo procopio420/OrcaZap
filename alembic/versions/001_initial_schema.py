@@ -34,39 +34,53 @@ def upgrade() -> None:
         "SELECT 1 FROM pg_type WHERE typname = 'userrole'"
     )).fetchone()
     if not result:
-        op.execute("CREATE TYPE userrole AS ENUM ('owner', 'attendant')")
+        op.execute(sa.text("CREATE TYPE userrole AS ENUM ('owner', 'attendant')"))
     
     # Check and create conversationstate enum
     result = connection.execute(sa.text(
         "SELECT 1 FROM pg_type WHERE typname = 'conversationstate'"
     )).fetchone()
     if not result:
-        op.execute(
+        op.execute(sa.text(
             "CREATE TYPE conversationstate AS ENUM "
             "('INBOUND', 'CAPTURE_MIN', 'QUOTE_READY', 'QUOTE_SENT', "
             "'WAITING_REPLY', 'HUMAN_APPROVAL', 'WON', 'LOST')"
-        )
+        ))
     
     # Check and create messagedirection enum
     result = connection.execute(sa.text(
         "SELECT 1 FROM pg_type WHERE typname = 'messagedirection'"
     )).fetchone()
     if not result:
-        op.execute("CREATE TYPE messagedirection AS ENUM ('inbound', 'outbound')")
+        op.execute(sa.text("CREATE TYPE messagedirection AS ENUM ('inbound', 'outbound')"))
     
     # Check and create quotestatus enum
     result = connection.execute(sa.text(
         "SELECT 1 FROM pg_type WHERE typname = 'quotestatus'"
     )).fetchone()
     if not result:
-        op.execute("CREATE TYPE quotestatus AS ENUM ('draft', 'sent', 'expired', 'won', 'lost')")
+        op.execute(sa.text("CREATE TYPE quotestatus AS ENUM ('draft', 'sent', 'expired', 'won', 'lost')"))
     
     # Check and create approvalstatus enum
     result = connection.execute(sa.text(
         "SELECT 1 FROM pg_type WHERE typname = 'approvalstatus'"
     )).fetchone()
     if not result:
-        op.execute("CREATE TYPE approvalstatus AS ENUM ('pending', 'approved', 'rejected')")
+        op.execute(sa.text("CREATE TYPE approvalstatus AS ENUM ('pending', 'approved', 'rejected')"))
+    
+    # Create enum type objects for use in table definitions
+    # These reference existing types (created above), so create_type=False prevents recreation
+    # We must provide the values for SQLAlchemy to understand the enum, but create_type=False
+    # tells it not to try to create the type in the database
+    userrole_enum = postgresql.ENUM("owner", "attendant", name="userrole", create_type=False)
+    conversationstate_enum = postgresql.ENUM(
+        "INBOUND", "CAPTURE_MIN", "QUOTE_READY", "QUOTE_SENT",
+        "WAITING_REPLY", "HUMAN_APPROVAL", "WON", "LOST",
+        name="conversationstate", create_type=False
+    )
+    messagedirection_enum = postgresql.ENUM("inbound", "outbound", name="messagedirection", create_type=False)
+    quotestatus_enum = postgresql.ENUM("draft", "sent", "expired", "won", "lost", name="quotestatus", create_type=False)
+    approvalstatus_enum = postgresql.ENUM("pending", "approved", "rejected", name="approvalstatus", create_type=False)
     
     # Tenants
     op.create_table(
@@ -84,7 +98,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("email", sa.String(255), nullable=False),
         sa.Column("password_hash", sa.String(255), nullable=False),
-        sa.Column("role", sa.Enum("owner", "attendant", name="userrole"), nullable=False),
+        sa.Column("role", userrole_enum, nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
         sa.UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
@@ -186,21 +200,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("contact_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("contacts.id"), nullable=False),
         sa.Column("channel_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("channels.id"), nullable=False),
-        sa.Column(
-            "state",
-            sa.Enum(
-                "INBOUND",
-                "CAPTURE_MIN",
-                "QUOTE_READY",
-                "QUOTE_SENT",
-                "WAITING_REPLY",
-                "HUMAN_APPROVAL",
-                "WON",
-                "LOST",
-                name="conversationstate",
-            ),
-            nullable=False,
-        ),
+        sa.Column("state", conversationstate_enum, nullable=False),
         sa.Column("window_expires_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("last_message_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), server_default=sa.text("now()"), nullable=False),
@@ -215,7 +215,7 @@ def upgrade() -> None:
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("conversation_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("conversations.id"), nullable=True),
         sa.Column("provider_message_id", sa.String(255), unique=True, nullable=False),
-        sa.Column("direction", sa.Enum("inbound", "outbound", name="messagedirection"), nullable=False),
+        sa.Column("direction", messagedirection_enum, nullable=False),
         sa.Column("message_type", sa.String(50), nullable=False),
         sa.Column("raw_payload", postgresql.JSONB(), nullable=False),
         sa.Column("text_content", sa.Text(), nullable=True),
@@ -230,7 +230,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("conversation_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("conversations.id"), nullable=False),
-        sa.Column("status", sa.Enum("draft", "sent", "expired", "won", "lost", name="quotestatus"), nullable=False),
+        sa.Column("status", quotestatus_enum, nullable=False),
         sa.Column("items_json", postgresql.JSONB(), nullable=False),
         sa.Column("subtotal", sa.Numeric(10, 2), nullable=False),
         sa.Column("freight", sa.Numeric(10, 2), nullable=False),
@@ -250,7 +250,7 @@ def upgrade() -> None:
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
         sa.Column("tenant_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("tenants.id"), nullable=False),
         sa.Column("quote_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("quotes.id"), nullable=False),
-        sa.Column("status", sa.Enum("pending", "approved", "rejected", name="approvalstatus"), nullable=False),
+        sa.Column("status", approvalstatus_enum, nullable=False),
         sa.Column("reason", sa.Text(), nullable=True),
         sa.Column("approved_by_user_id", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
         sa.Column("approved_at", sa.DateTime(timezone=True), nullable=True),

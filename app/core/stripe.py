@@ -20,6 +20,7 @@ def create_checkout_session(
     tenant_slug: str,
     success_url: str,
     cancel_url: str,
+    db: Session | None = None,
 ) -> stripe.checkout.Session:
     """Create Stripe Checkout session for subscription.
 
@@ -28,10 +29,18 @@ def create_checkout_session(
         tenant_slug: Tenant slug for metadata
         success_url: URL to redirect after successful payment
         cancel_url: URL to redirect after cancellation
+        db: Optional database session to get existing customer_id
 
     Returns:
         Stripe Checkout Session object
     """
+    # Get existing customer_id if available
+    customer_id = None
+    if db:
+        tenant = db.query(Tenant).filter_by(id=tenant_id).first()
+        if tenant and tenant.stripe_customer_id:
+            customer_id = tenant.stripe_customer_id
+    
     session_params = {
         "payment_method_types": ["card"],
         "line_items": [

@@ -31,3 +31,6 @@ def downgrade() -> None:
     op.drop_column("tenants", "slug")
 
 
+
+
+

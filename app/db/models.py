@@ -326,6 +326,8 @@ class Quote(Base):
 
     __table_args__ = (
         Index("idx_quotes_tenant_id", "tenant_id"),
+        Index("idx_quotes_status", "status"),
+        Index("idx_quotes_tenant_status", "tenant_id", "status"),
     )
 
 
@@ -368,4 +370,33 @@ class AuditLog(Base):
     before_json = Column(JSONB, nullable=True)
     after_json = Column(JSONB, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class MessageTemplate(Base):
+    """Message template model."""
+
+    __tablename__ = "message_templates"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False)
+    template_type = Column(String(50), nullable=False)  # 'data_capture', 'quote', 'approval', etc.
+    name = Column(String(255), nullable=True)  # Nome descritivo (ex: "Template Padrão")
+    content = Column(Text, nullable=False)  # Conteúdo do template
+    variables = Column(JSONB, nullable=True)  # Variáveis disponíveis (ex: {contact_name, items, total})
+    quote_type = Column(String(50), nullable=True)  # 'residencial', 'comercial', etc. (for quote templates)
+    signature = Column(Text, nullable=True)  # Assinatura automática (ex: "Equipe {tenant_name}")
+    is_active = Column(Boolean, default=True, nullable=False)
+    version = Column(Integer, default=1, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "template_type", "name", name="uq_message_templates_tenant_type_name"),
+        Index("idx_message_templates_tenant_type", "tenant_id", "template_type"),
+    )
 

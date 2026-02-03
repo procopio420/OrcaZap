@@ -1,13 +1,34 @@
 """Message parsing - extract data from user messages."""
 
+import json
 import logging
 import re
 from typing import Any
+from uuid import UUID
+
+from app.domain.ai import get_llm_router
+from app.domain.ai.models import LLMRequest
 
 logger = logging.getLogger(__name__)
 
 
-def parse_data_capture_message(message_text: str) -> dict[str, Any] | None:
+def parse_data_capture_message(
+    message_text: str,
+    use_ai: bool = False,
+    tenant_id: UUID | None = None,
+) -> tuple[dict[str, Any] | None, bool]:
+    """Parse data capture message to extract CEP/bairro, payment, delivery, items.
+    
+    Args:
+        message_text: User message text
+        use_ai: Whether to use AI for parsing (if True, always requires approval)
+        tenant_id: Optional tenant ID for AI context
+    
+    Returns:
+        Tuple of (parsed_data, requires_approval)
+        - parsed_data: Dictionary with extracted data or None if parsing fails
+        - requires_approval: True if AI was used (always requires human approval)
+    """
     """Parse data capture message to extract CEP/bairro, payment, delivery, items.
 
     This is a simple parser for MVP. In production, might use NLP/LLM.
@@ -108,14 +129,78 @@ def parse_data_capture_message(message_text: str) -> dict[str, Any] | None:
             "unit": unit,
         })
 
+    # Try AI parsing if requested
+    if use_ai:
+        try:
+            router = get_llm_router()
+            ai_prompt = f"""Extraia as informações de orçamento da seguinte mensagem do cliente:
+
+{message_text}
+
+Extraia e retorne APENAS um JSON válido com as seguintes chaves:
+- cep_or_bairro: CEP (formato 00000-000) ou nome do bairro
+- payment_method: "PIX", "Cartão" ou "Boleto"
+- delivery_day: Data de entrega ou "o quanto antes"
+- items: Lista de objetos com "name", "quantity" (número) e "unit" (string)
+
+Exemplo de resposta:
+{{
+  "cep_or_bairro": "01310-100",
+  "payment_method": "PIX",
+  "delivery_day": "Amanhã",
+  "items": [
+    {{"name": "Cimento 50kg", "quantity": 10, "unit": "sacos"}},
+    {{"name": "Areia média", "quantity": 2, "unit": "m³"}}
+  ]
+}}
+
+Retorne APENAS o JSON, sem markdown ou explicações."""
+
+            request = LLMRequest(
+                prompt=ai_prompt,
+                system_prompt="Você é um assistente especializado em extrair informações de pedidos de material de construção. Retorne sempre JSON válido.",
+                temperature=0.3,
+                tenant_id=tenant_id,
+            )
+            
+            response = router.call(request, tenant_id=tenant_id)
+            
+            # Parse JSON response
+            try:
+                # Remove markdown code blocks if present
+                content = response.content.strip()
+                if content.startswith("```"):
+                    # Extract JSON from code block
+                    lines = content.split("\n")
+                    content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
+                elif content.startswith("```json"):
+                    lines = content.split("\n")
+                    content = "\n".join(lines[1:-1]) if len(lines) > 2 else content
+                
+                ai_data = json.loads(content)
+                
+                # Validate and normalize
+                if isinstance(ai_data, dict):
+                    # AI was used, so requires approval
+                    logger.info(f"AI parsing successful for tenant {tenant_id}, requires approval")
+                    return (ai_data, True)
+            except (json.JSONDecodeError, KeyError) as e:
+                logger.warning(f"Failed to parse AI response: {e}, falling back to regex")
+                # Fall through to regex parsing
+        
+        except Exception as e:
+            logger.error(f"AI parsing failed: {e}, falling back to regex", exc_info=True)
+            # Fall through to regex parsing
+    
+    # Regex-based parsing (original implementation)
     # Check if we have minimum required data
     if not (cep_or_bairro and payment_method and delivery_day and items):
-        return None
+        return (None, False)
 
-    return {
+    return ({
         "cep_or_bairro": cep_or_bairro,
         "payment_method": payment_method,
         "delivery_day": delivery_day,
         "items": items,
-    }
+    }, False)
 

@@ -1,6 +1,16 @@
 """Template rendering utilities."""
 
-from jinja2 import Template
+from typing import Optional
+from uuid import UUID
+
+from jinja2 import Environment, Template, select_autoescape
+from sqlalchemy.orm import Session
+
+from app.db.models import MessageTemplate
+from app.domain.messages import format_quote_message, get_data_capture_prompt
+
+# Create safe Jinja2 environment with autoescape enabled
+_jinja_env = Environment(autoescape=select_autoescape(['html', 'xml']))
 
 
 def render_template(template_name: str, context: dict) -> str:
@@ -111,7 +121,127 @@ def render_template(template_name: str, context: dict) -> str:
     }
 
     template_str = templates.get(template_name, "<p>Template not found: {{ template_name }}</p>")
-    template = Template(template_str)
+    template = _jinja_env.from_string(template_str)
     return template.render(**context)
+
+
+def get_message_template(
+    db: Session,
+    tenant_id: UUID,
+    template_type: str,
+    name: Optional[str] = None,
+) -> Optional[MessageTemplate]:
+    """Get a message template from database.
+    
+    Args:
+        db: Database session
+        tenant_id: Tenant UUID
+        template_type: Type of template ('data_capture', 'quote', 'approval', etc.)
+        name: Optional template name (if None, gets the active default)
+    
+    Returns:
+        MessageTemplate if found, None otherwise
+    """
+    query = db.query(MessageTemplate).filter_by(
+        tenant_id=tenant_id,
+        template_type=template_type,
+        is_active=True,
+    )
+    
+    if name:
+        query = query.filter_by(name=name)
+    else:
+        # Get default (name is None or empty)
+        query = query.filter((MessageTemplate.name == None) | (MessageTemplate.name == ""))
+    
+    return query.first()
+
+
+def get_data_capture_template(
+    db: Session,
+    tenant_id: UUID,
+    contact_name: Optional[str] = None,
+) -> str:
+    """Get data capture prompt, from DB template or default.
+    
+    Args:
+        db: Database session
+        tenant_id: Tenant UUID
+        contact_name: Optional contact name for personalization
+    
+    Returns:
+        Formatted message text
+    """
+    template = get_message_template(db, tenant_id, "data_capture")
+    
+    if template:
+        # Render template with variables (safe with autoescape)
+        jinja_template = _jinja_env.from_string(template.content)
+        return jinja_template.render(contact_name=contact_name or "")
+    
+    # Fallback to default
+    return get_data_capture_prompt(contact_name)
+
+
+def get_quote_template(
+    db: Session,
+    tenant_id: UUID,
+    quote_type: Optional[str] = None,
+    **kwargs,
+) -> str:
+    """Get quote message template, from DB template or default.
+    
+    Args:
+        db: Database session
+        tenant_id: Tenant UUID
+        quote_type: Optional quote type ('residencial', 'comercial', etc.)
+        **kwargs: Template variables (items, subtotal, freight, etc.)
+    
+    Returns:
+        Formatted message text
+    """
+    template = get_message_template(db, tenant_id, "quote", quote_type=quote_type)
+    
+    # Get tenant for signature
+    from app.db.models import Tenant
+    tenant = db.query(Tenant).filter_by(id=tenant_id).first()
+    tenant_name = tenant.name if tenant else ""
+    
+    if template:
+        # Render template with variables (safe with autoescape)
+        jinja_template = _jinja_env.from_string(template.content)
+        rendered = jinja_template.render(
+            tenant_name=tenant_name,
+            **kwargs,
+        )
+        
+        # Add signature if configured (safe with autoescape)
+        if template.signature:
+            signature_template = _jinja_env.from_string(template.signature)
+            signature = signature_template.render(tenant_name=tenant_name)
+            rendered += f"\n\n{signature}"
+        
+        return rendered
+    
+    # Fallback to default
+    message = format_quote_message(
+        items=kwargs.get("items", []),
+        subtotal=kwargs.get("subtotal", 0.0),
+        freight=kwargs.get("freight", 0.0),
+        discount_pct=kwargs.get("discount_pct", 0.0),
+        discount_amount=kwargs.get("discount_amount", 0.0),
+        total=kwargs.get("total", 0.0),
+        payment_method=kwargs.get("payment_method", ""),
+        delivery_day=kwargs.get("delivery_day", ""),
+        valid_until=kwargs.get("valid_until"),
+    )
+    
+    # Add default signature if tenant name available
+    if tenant_name:
+        message += f"\n\nEquipe {tenant_name}"
+    
+    return message
+
+
 
 

@@ -7,11 +7,15 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse
-from jinja2 import Template
+from jinja2 import Environment, select_autoescape
 from sqlalchemy.orm import Session
+
+# Create safe Jinja2 environment with autoescape enabled
+_jinja_env = Environment(autoescape=select_autoescape(['html', 'xml']))
 
 from app.admin.auth import authenticate_user, create_session, delete_session, get_current_user, get_db
 from app.adapters.whatsapp.sender import send_text_message
+from app.core.csrf import require_csrf_token
 from app.db.models import (
     Approval,
     ApprovalStatus,
@@ -125,7 +129,7 @@ def render_template(template_name: str, context: dict) -> str:
     }
 
     template_str = templates.get(template_name, "<p>Template not found</p>")
-    template = Template(template_str)
+    template = _jinja_env.from_string(template_str)
     return template.render(**context)
 
 
@@ -161,8 +165,11 @@ async def login(
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
-    session_id = create_session(user.id)
+    # Create session with CSRF token
+    session_id, csrf_token = create_session(user.id)
     response = RedirectResponse(url="/admin/approvals", status_code=status.HTTP_302_FOUND)
+    
+    # Set session cookie
     response.set_cookie(
         key="admin_session_id",
         value=session_id,
@@ -171,6 +178,17 @@ async def login(
         samesite="lax",
         max_age=86400,  # 24 hours
     )
+    
+    # Set CSRF token cookie
+    response.set_cookie(
+        key="csrf_token",
+        value=csrf_token,
+        httponly=False,  # Needs to be accessible to JavaScript for HTMX
+        secure=False,  # Set to True in production with HTTPS
+        samesite="lax",
+        max_age=86400,  # 24 hours
+    )
+    
     return response
 
 
@@ -236,6 +254,7 @@ async def approve_quote(
     approval_id: str,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    _: None = Depends(require_csrf_token),
 ) -> str:
     """Approve a quote and send it."""
     # Validate UUID format
@@ -369,6 +388,7 @@ async def reject_quote(
     approval_id: str,
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_db)],
+    _: None = Depends(require_csrf_token),
 ) -> str:
     """Reject a quote."""
     # Validate UUID format
