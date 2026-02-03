@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_db
@@ -13,29 +13,44 @@ from app.core.sessions import create_session, delete_session
 from app.db.models import Tenant, User, UserRole
 from app.domain.slug import ensure_unique_slug, slugify
 
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verify a password against a hash."""
-    return pwd_context.verify(plain_password, hashed_password)
+    # Truncate password to 72 bytes if needed (bcrypt limit)
+    password_bytes = plain_password.encode('utf-8')
+    if len(password_bytes) > 72:
+        password_bytes = password_bytes[:72]
+    
+    try:
+        return bcrypt.checkpw(password_bytes, hashed_password.encode('utf-8'))
+    except Exception:
+        return False
 
 
 def get_password_hash(password: str) -> str:
-    """Hash a password.
+    """Hash a password using bcrypt.
     
-    Raises:
-        HTTPException: If password is too long (bcrypt limit is 72 bytes)
+    Bcrypt has a 72-byte limit. We truncate the password to 72 bytes if needed.
+    This is safe because we validate password length before calling this function.
+    
+    Args:
+        password: Plain text password
+    
+    Returns:
+        Hashed password (as string)
     """
-    # Bcrypt has a 72-byte limit. Check password length before hashing.
-    # We use UTF-8 encoding to get byte length, but allow some margin for safety.
-    if len(password.encode('utf-8')) > 72:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="A senha é muito longa. Por favor, use uma senha com no máximo 72 caracteres.",
-        )
-    return pwd_context.hash(password)
+    # Bcrypt has a 72-byte limit. Truncate to 72 bytes if necessary.
+    password_bytes = password.encode('utf-8')
+    if len(password_bytes) > 72:
+        # Truncate to 72 bytes
+        password_bytes = password_bytes[:72]
+    
+    # Generate salt and hash using bcrypt directly
+    salt = bcrypt.gensalt()
+    hash_bytes = bcrypt.hashpw(password_bytes, salt)
+    
+    # Return as string (bcrypt hashes are ASCII-safe)
+    return hash_bytes.decode('utf-8')
 
 
 def authenticate_user(db: Session, email: str, password: str, tenant_id: UUID) -> User | None:
