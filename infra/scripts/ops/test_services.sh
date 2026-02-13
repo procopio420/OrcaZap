@@ -9,12 +9,19 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 export SSH_PRIVATE_KEY="$PROJECT_ROOT/infra/deploy_key"
 export INVENTORY_FILE="$PROJECT_ROOT/infra/inventory/hosts.env"
 
-VPS1=191.252.120.36
-VPS2=191.252.120.182
-VPS3=191.252.120.176
-
-POSTGRES_PASSWORD="_uetYjvZLNd6uAlJQZO1km_Lzl8EmpBeOCuTzpvEgEI"
-REDIS_PASSWORD="W3oXTVOmlK3X7UXJ6aslgcwSO2Bh6VPnSfYCH3rmmcI"
+# Load from inventory file (hosts.env) - DO NOT hardcode IPs or passwords here
+if [ -f "$INVENTORY_FILE" ]; then
+    source "$INVENTORY_FILE"
+    VPS1="${VPS1_HOST:-vps1.example.com}"
+    VPS2="${VPS2_HOST:-vps2.example.com}"
+    VPS3="${VPS3_HOST:-vps3.example.com}"
+    POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-CHANGE_ME}"
+    REDIS_PASSWORD="${REDIS_PASSWORD:-CHANGE_ME}"
+else
+    echo "❌ ERROR: Inventory file not found: $INVENTORY_FILE"
+    echo "   Create hosts.env from hosts.example.env and fill in your values"
+    exit 1
+fi
 
 echo "🔍 Testing all services on all VPS..."
 echo ""
@@ -107,7 +114,7 @@ check_redis() {
 }
 
 # ============================================
-# VPS1 (APP) - 191.252.120.36
+# VPS1 (APP)
 # ============================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "📦 VPS1 (APP): $VPS1"
@@ -130,7 +137,7 @@ check_http "$VPS1" "8000" "/health" "Health Endpoint"
 echo ""
 
 # ============================================
-# VPS2 (DATA) - 191.252.120.182
+# VPS2 (DATA)
 # ============================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "💾 VPS2 (DATA): $VPS2"
@@ -151,7 +158,7 @@ check_redis "$VPS2" "127.0.0.1"
 echo ""
 
 # ============================================
-# VPS3 (WORKER) - 191.252.120.176
+# VPS3 (WORKER)
 # ============================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "⚙️  VPS3 (WORKER): $VPS3"

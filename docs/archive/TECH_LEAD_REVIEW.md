@@ -46,10 +46,10 @@ template = env.from_string(template_str)  # ✅ Safe
 **Issue**: Production secrets (database passwords, WireGuard keys, Redis passwords) are committed to git.
 
 ```bash
-# Found in hosts.env:
-POSTGRES_PASSWORD=_uetYjvZLNd6uAlJQZO1km_Lzl8EmpBeOCuTzpvEgEI
-REDIS_PASSWORD=W3oXTVOmlK3X7UXJ6aslgcwSO2Bh6VPnSfYCH3rmmcI
-VPS1_WIREGUARD_PRIVATE_KEY=IDwl/sRLRUV/AT2Y041av/p9AzhlsnmP5k0WMLrAjUQ=
+# Found in hosts.env (REMOVED - credentials rotated):
+POSTGRES_PASSWORD=<EXPOSED_AND_ROTATED>
+REDIS_PASSWORD=<EXPOSED_AND_ROTATED>
+VPS1_WIREGUARD_PRIVATE_KEY=<EXPOSED_AND_ROTATED>
 ```
 
 **Impact**: Anyone with repository access has production credentials.

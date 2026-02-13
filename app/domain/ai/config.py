@@ -26,3 +26,6 @@ def get_provider_config(tenant_id: Optional[UUID] = None) -> dict[str, str]:
     }
 
 
+
+
+

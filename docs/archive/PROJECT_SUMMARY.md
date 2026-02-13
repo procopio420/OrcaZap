@@ -97,9 +97,9 @@ Construction material stores in Brazil receive many quote requests via WhatsApp.
 
 #### Infrastructure Status ✅
 - ✅ **Inventory file** with real production IPs:
-  - VPS1 (APP): 191.252.120.36
-  - VPS2 (DATA): 191.252.120.182
-  - VPS3 (WORKER): 191.252.120.176
+  - VPS1 (APP): <VPS1_HOST>
+  - VPS2 (DATA): <VPS2_HOST>
+  - VPS3 (WORKER): <VPS3_HOST>
 - ✅ **WireGuard keys** generated for all 3 servers
 - ✅ **Secure passwords** generated for PostgreSQL and Redis
 - ✅ **Firewall rules** configured on all servers

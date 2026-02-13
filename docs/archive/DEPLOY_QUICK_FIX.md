@@ -38,3 +38,6 @@ ls -la infra/inventory/hosts.env
 **Nota**: Corrigi a função `load_inventory()` para encontrar o arquivo automaticamente, mas é mais seguro executar da raiz do projeto.
 
 
+
+
+

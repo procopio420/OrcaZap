@@ -27,7 +27,7 @@ Options:
     --help, -h          Show this help message
 
 Examples:
-    ./verify_clean_host.sh --host 191.252.120.36
+    ./verify_clean_host.sh --host <VPS1_HOST>
 
 EOF
 }

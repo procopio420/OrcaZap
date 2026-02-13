@@ -1,30 +1,57 @@
 # OrcaZap
 
-WhatsApp-first quoting assistant for Brazilian construction material stores.
+WhatsApp-first quoting assistant for Brazilian construction material stores. Automates quote generation, pricing, and approval workflows via WhatsApp Cloud API.
 
-## Product Overview
+## Core Features
 
-OrcaZap automates the quoting process for construction material stores via WhatsApp:
-- Receives inbound WhatsApp messages (WhatsApp Cloud API)
-- Collects minimal data in a single question block
-- Generates deterministic quotes (pricing rules, freight, margins)
-- Sends formatted quotes via WhatsApp
-- Requires human approval for edge cases (unknown SKU, low margin, etc.)
+- **WhatsApp Integration**: Receive quote requests and send formatted quotes via WhatsApp Cloud API
+- **Automated Quoting**: Deterministic pricing engine with volume discounts, freight calculation, and payment method discounts
+- **Multi-Tenant SaaS**: Host-based routing with strict tenant isolation
+- **Approval Workflow**: Human-in-the-loop approval for edge cases (unknown SKUs, low margins, high values)
+- **Admin Panel**: HTMX-based server-rendered dashboard for quote approvals and configuration
 
-## Tech Stack
+## Architecture
 
-- Python 3.12+
-- FastAPI
-- HTMX (server-rendered admin panel)
-- PostgreSQL
-- Redis
-- RQ (Redis Queue) for workers
-- Alembic for migrations
-- pytest for testing
-- ruff for linting
-- black/ruff-format for formatting
+```
+┌─────────────────────────────────────────────────────────┐
+│              WhatsApp Cloud API                          │
+└────────────────────┬────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  FastAPI Application (Uvicorn)                           │
+│  ├── Webhook endpoints                                   │
+│  ├── Admin panel (HTMX)                                  │
+│  └── API endpoints                                       │
+└────────────────────┬────────────────────────────────────┘
+                     │
+        ┌────────────┴────────────┐
+        ▼                         ▼
+┌──────────────┐         ┌──────────────┐
+│  PostgreSQL  │         │    Redis     │
+│  (Database)   │         │ (Queue/Cache)│
+└──────────────┘         └──────┬───────┘
+                                 │
+                                 ▼
+                        ┌──────────────┐
+                        │  RQ Workers  │
+                        │ (Background)  │
+                        └──────────────┘
+```
 
-## Development Setup
+**Components:**
+- **API**: FastAPI application handling webhooks, admin panel, and API endpoints
+- **Worker**: RQ workers processing background jobs (message processing, quote generation)
+- **Database**: PostgreSQL for persistent data
+- **Queue**: Redis for job queue and session storage
+
+**Multi-Tenancy:**
+- Host-based routing: `{slug}.orcazap.com` for tenant dashboards
+- `api.orcazap.com` for API endpoints and webhooks
+- `orcazap.com` for public pages
+- All queries filtered by `tenant_id` for isolation
+
+## Quickstart
 
 ### Prerequisites
 
@@ -35,93 +62,68 @@ OrcaZap automates the quoting process for construction material stores via Whats
 
 ### Installation
 
-1. Clone the repository:
+1. **Clone and install dependencies:**
 ```bash
 git clone <repo-url>
 cd orcazap
+poetry install  # or: pip install -r requirements.txt
 ```
 
-2. Install dependencies:
+2. **Set up environment:**
 ```bash
-# Using Poetry
-poetry install
-
-# Or using pip
-pip install -r requirements.txt
-```
-
-3. Set up environment variables:
-```bash
-cp .env.example .env
+cp env.example .env
 # Edit .env with your configuration
 ```
 
-4. Set up database:
+3. **Set up database:**
 ```bash
-# Create database
 createdb orcazap
-
-# Run migrations
 alembic upgrade head
 ```
 
-5. Run tests:
+4. **Start services:**
+```bash
+# Terminal 1: Start API
+uvicorn app.main:app --reload
+
+# Terminal 2: Start worker
+rq worker --url redis://localhost:6379/0 default
+```
+
+5. **Run tests:**
 ```bash
 pytest
 ```
 
-6. Start development server:
-```bash
-uvicorn app.main:app --reload
-```
+## How It Works
 
-## Project Structure
+1. **Webhook receives message**: WhatsApp Cloud API sends webhook → FastAPI stores message → enqueues job
+2. **Worker processes**: RQ worker picks up job → creates/updates contact & conversation → state machine transition
+3. **Data capture**: Customer provides CEP, payment method, delivery day, items → worker parses message
+4. **Quote generation**: Pricing engine calculates quote → checks approval rules → auto-approve or require human approval
+5. **Approval (if needed)**: Admin reviews in HTMX dashboard → approves/rejects → quote sent via WhatsApp
+6. **Quote sent**: Formatted quote message sent → conversation state updated → customer can accept/decline
 
-```
-orcazap/
-├── app/
-│   ├── main.py              # FastAPI application
-│   ├── settings.py           # Configuration
-│   ├── db/                   # Database session, models
-│   ├── domain/              # Business logic (pricing, freight, state machine)
-│   ├── adapters/            # External adapters (WhatsApp, etc.)
-│   ├── admin/               # Admin panel routes and templates
-│   └── worker/              # RQ worker and jobs
-├── tests/
-│   ├── unit/                # Unit tests
-│   └── integration/         # Integration tests
-├── docs/                    # Documentation
-├── alembic/                 # Database migrations
-└── scripts/                 # Utility scripts
-```
+See [docs/flows.md](docs/flows.md) for detailed flow diagrams.
 
 ## Documentation
 
-- [Data Model](docs/data_model.md)
-- [State Machine](docs/state_machine.md)
-- [Message Templates](docs/message_templates.md)
-- [WhatsApp Integration](docs/whatsapp.md)
-- [Worker & Queue](docs/worker.md)
-- [Admin UI](docs/admin_ui.md)
-- [Infrastructure](docs/infra.md)
+- **[Documentation Index](docs/index.md)** - Complete documentation navigation
+- **[Architecture](docs/architecture.md)** - System design and boundaries
+- **[Flows](docs/flows.md)** - End-to-end application flows
+- **[Security](docs/security.md)** - Security model and tenant isolation
+- **[Deployment](docs/deployment.md)** - Production deployment guide
 
-## Running Tests
+## Tech Stack
 
-```bash
-# Run all tests
-pytest
+- **Backend**: Python 3.12+, FastAPI, SQLAlchemy 2.0, Alembic
+- **Queue**: Redis, RQ (Redis Queue)
+- **Frontend**: HTMX, Jinja2 templates
+- **Database**: PostgreSQL 15+
+- **Testing**: pytest
+- **Code Quality**: ruff, mypy
 
-# Run with coverage
-pytest --cov=app --cov-report=html
-
-# Run specific test file
-pytest tests/unit/test_pricing.py
-
-# Run with verbose output
-pytest -v
-```
-
-## Code Quality
+## Development
 
 ```bash
 # Format code
@@ -130,20 +132,26 @@ ruff format .
 # Lint code
 ruff check .
 
-# Type check (if mypy configured)
+# Type check
 mypy app
+
+# Run tests
+pytest
+
+# Run with coverage
+pytest --cov=app --cov-report=html
 ```
 
-## CI/CD
+## Sensitive Information Policy
 
-GitHub Actions runs on every push:
-- Linting (ruff)
-- Formatting check (ruff format --check)
-- Type checking (mypy, if configured)
-- Tests (pytest)
+**No sensitive production data in public documentation:**
+- No real IP addresses or domains
+- No tokens, keys, or passwords
+- All secrets documented as required environment variables with placeholders
+- Private infrastructure details kept in private runbooks
+
+If you find sensitive information in public docs, please report it.
 
 ## License
 
 [To be determined]
-
-

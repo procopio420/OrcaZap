@@ -32,10 +32,10 @@ Environment Variables:
 
 Examples:
     # Dry run
-    CONFIRM_REMOVE_BASECOMMERCE=1 ./remove_basecommerce.sh --host 191.252.120.36 --dry-run
+    CONFIRM_REMOVE_BASECOMMERCE=1 ./remove_basecommerce.sh --host <VPS1_HOST> --dry-run
 
     # Actual removal
-    CONFIRM_REMOVE_BASECOMMERCE=1 ./remove_basecommerce.sh --host 191.252.120.36
+    CONFIRM_REMOVE_BASECOMMERCE=1 ./remove_basecommerce.sh --host <VPS1_HOST>
 
 EOF
 }

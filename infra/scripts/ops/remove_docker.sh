@@ -31,10 +31,10 @@ Environment Variables:
 
 Examples:
     # Dry run
-    CONFIRM_REMOVE_DOCKER=1 ./remove_docker.sh --host 191.252.120.36 --dry-run
+    CONFIRM_REMOVE_DOCKER=1 ./remove_docker.sh --host <VPS1_HOST> --dry-run
 
     # Actual removal
-    CONFIRM_REMOVE_DOCKER=1 ./remove_docker.sh --host 191.252.120.36
+    CONFIRM_REMOVE_DOCKER=1 ./remove_docker.sh --host <VPS1_HOST>
 
 EOF
 }

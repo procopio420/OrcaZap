@@ -169,10 +169,10 @@ export SSH_PRIVATE_KEY="$(pwd)/docs/infra/deploy_key"
 export INVENTORY_FILE="$(pwd)/infra/inventory/hosts.env"
 
 # Dry run
-CONFIRM_REMOVE_BASECOMMERCE=1 ./infra/scripts/ops/remove_basecommerce.sh --host 191.252.120.36 --dry-run
+CONFIRM_REMOVE_BASECOMMERCE=1 ./infra/scripts/ops/remove_basecommerce.sh --host <VPS1_HOST> --dry-run
 
 # Actual removal
-CONFIRM_REMOVE_BASECOMMERCE=1 ./infra/scripts/ops/remove_basecommerce.sh --host 191.252.120.36
+CONFIRM_REMOVE_BASECOMMERCE=1 ./infra/scripts/ops/remove_basecommerce.sh --host <VPS1_HOST>
 ```
 
 **What it does:**
@@ -196,10 +196,10 @@ export SSH_PRIVATE_KEY="$(pwd)/docs/infra/deploy_key"
 export INVENTORY_FILE="$(pwd)/infra/inventory/hosts.env"
 
 # Dry run
-CONFIRM_REMOVE_DOCKER=1 ./infra/scripts/ops/remove_docker.sh --host 191.252.120.36 --dry-run
+CONFIRM_REMOVE_DOCKER=1 ./infra/scripts/ops/remove_docker.sh --host <VPS1_HOST> --dry-run
 
 # Actual removal
-CONFIRM_REMOVE_DOCKER=1 ./infra/scripts/ops/remove_docker.sh --host 191.252.120.36
+CONFIRM_REMOVE_DOCKER=1 ./infra/scripts/ops/remove_docker.sh --host <VPS1_HOST>
 ```
 
 **What it does:**
@@ -226,7 +226,7 @@ Verifies that the host is clean of BaseCommerce artifacts.
 export SSH_PRIVATE_KEY="$(pwd)/docs/infra/deploy_key"
 export INVENTORY_FILE="$(pwd)/infra/inventory/hosts.env"
 
-./infra/scripts/ops/verify_clean_host.sh --host 191.252.120.36
+./infra/scripts/ops/verify_clean_host.sh --host <VPS1_HOST>
 ```
 
 **What it checks:**
@@ -246,7 +246,7 @@ To completely remove BaseCommerce and Docker from a host:
 ```bash
 export SSH_PRIVATE_KEY="$(pwd)/docs/infra/deploy_key"
 export INVENTORY_FILE="$(pwd)/infra/inventory/hosts.env"
-export TARGET_HOST=191.252.120.36
+export TARGET_HOST=<VPS1_HOST>
 
 # Step 1: Remove BaseCommerce
 CONFIRM_REMOVE_BASECOMMERCE=1 ./infra/scripts/ops/remove_basecommerce.sh --host "$TARGET_HOST"

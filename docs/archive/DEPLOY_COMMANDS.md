@@ -17,35 +17,35 @@ export INVENTORY_FILE="$(pwd)/infra/inventory/hosts.env"
 ### Step 2: Deploy Application to VPS1 (APP)
 
 ```bash
-./infra/scripts/deploy/deploy_app.sh --host 191.252.120.36
+./infra/scripts/deploy/deploy_app.sh --host <VPS1_HOST>
 ```
 
 ### Step 3: Deploy Workers to VPS3 (WORKER)
 
 ```bash
-./infra/scripts/deploy/deploy_worker.sh --host 191.252.120.176
+./infra/scripts/deploy/deploy_worker.sh --host <VPS3_HOST>
 ```
 
 ### Step 4: Run Database Migrations
 
 ```bash
-./infra/scripts/deploy/migrate.sh --host 191.252.120.36
+./infra/scripts/deploy/migrate.sh --host <VPS1_HOST>
 ```
 
 ### Step 5: Start Services
 
 ```bash
 # Start app on VPS1
-./infra/scripts/deploy/restart.sh --host 191.252.120.36 --service app
+./infra/scripts/deploy/restart.sh --host <VPS1_HOST> --service app
 
 # Start workers on VPS3
-./infra/scripts/deploy/restart.sh --host 191.252.120.176 --service worker
+./infra/scripts/deploy/restart.sh --host <VPS3_HOST> --service worker
 ```
 
 ### Step 6: Health Check
 
 ```bash
-./infra/scripts/deploy/healthcheck.sh --host 191.252.120.36
+./infra/scripts/deploy/healthcheck.sh --host <VPS1_HOST>
 ```
 
 ### Step 7: Verify All Services
@@ -65,8 +65,8 @@ set -euo pipefail
 export SSH_PRIVATE_KEY="$(pwd)/docs/infra/deploy_key"
 export INVENTORY_FILE="$(pwd)/infra/inventory/hosts.env"
 
-VPS1=191.252.120.36
-VPS3=191.252.120.176
+VPS1=<VPS1_HOST>
+VPS3=<VPS3_HOST>
 
 echo "🚀 Starting OrcaZap deployment..."
 
@@ -102,10 +102,10 @@ echo "✅ Deployment complete!"
 
 After successful deployment:
 
-- **FastAPI App**: `http://191.252.120.36:8000/health`
-- **Nginx HTTP**: `http://191.252.120.36:80`
-- **Nginx HTTPS**: `https://191.252.120.36:443`
-- **PostgreSQL**: `191.252.120.182:5432` (via WireGuard: `10.10.0.2:5432`)
-- **Redis**: `191.252.120.182:6379` (via WireGuard: `10.10.0.2:6379`)
+- **FastAPI App**: `http://<VPS1_HOST>:8000/health`
+- **Nginx HTTP**: `http://<VPS1_HOST>:80`
+- **Nginx HTTPS**: `https://<VPS1_HOST>:443`
+- **PostgreSQL**: `<VPS2_HOST>:5432` (via WireGuard: `10.10.0.2:5432`)
+- **Redis**: `<VPS2_HOST>:6379` (via WireGuard: `10.10.0.2:6379`)
 
 

@@ -1,0 +1,27 @@
+name: Lint Documentation
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**.md'
+      - 'docs/**'
+      - 'README.md'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - '**.md'
+      - 'docs/**'
+      - 'README.md'
+
+jobs:
+  lint-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Run documentation lint
+        run: |
+          chmod +x scripts/lint-docs.sh
+          ./scripts/lint-docs.sh
+

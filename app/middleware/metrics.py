@@ -105,3 +105,6 @@ def record_approval_created(tenant_id: str, reason_type: str):
     approvals_created_total.labels(tenant_id=tenant_id, reason_type=reason_type).inc()
 
 
+
+
+

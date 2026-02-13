@@ -134,7 +134,7 @@ def register_tenant_and_user(
         tenant_id=tenant.id,
         email=email,
         password_hash=password_hash,
-        role=UserRole.OWNER,
+        role=str(UserRole.OWNER.value),  # Explicitly convert to string "owner" for PostgreSQL enum
     )
     db.add(user)
     db.commit()

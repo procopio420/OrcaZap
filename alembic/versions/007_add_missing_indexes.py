@@ -27,3 +27,6 @@ def downgrade():
     op.drop_index('idx_quotes_status', table_name='quotes')
 
 
+
+
+
