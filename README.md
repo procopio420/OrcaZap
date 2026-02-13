@@ -1,4 +1,4 @@
-# OrcaZap
+# OrçaZap
 
 WhatsApp-first quoting assistant for Brazilian construction material stores. Automates quote generation, pricing, and approval workflows via WhatsApp Cloud API.
 
