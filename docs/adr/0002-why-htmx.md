@@ -149,3 +149,6 @@ We will use **HTMX** with **Jinja2 templates** for the admin panel.
 - [HTMX Documentation](https://htmx.org/)
 - [Jinja2 Documentation](https://jinja.palletsprojects.com/)
 
+
+
+

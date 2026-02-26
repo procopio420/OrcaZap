@@ -282,3 +282,6 @@ See [flows.md](flows.md) for detailed flow diagrams.
 
 For early-stage SaaS, single-instance deployment is sufficient and can scale horizontally when needed.
 
+
+
+

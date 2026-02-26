@@ -529,3 +529,6 @@ save 60 10000
 - Check logs: `sudo tail -f /var/log/nginx/error.log`
 - Check SSL: `sudo certbot certificates`
 
+
+
+
